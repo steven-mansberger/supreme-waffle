@@ -1,5 +1,3 @@
----
-
 # RSS Feed Generator
 
 This project generates RSS feeds from blogs and websites that lack native RSS support, making them accessible for feed readers like FreshRSS. It runs on a Fedora server (`cheesecake`, `192.168.0.66`) and is designed to scrape articles, cache them, and serve static RSS feeds via a backend HTTP server, while also providing a dynamic feed generation API via Flask.
