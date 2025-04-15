@@ -1,0 +1,8 @@
+venv/
+logs/
+rss_feeds/
+*.service
+.env
+feeds.json
+scripts/prepare-commit.sh
+scripts/setup-after-pull.sh

@@ -1,0 +1,8 @@
+requests
+beautifulsoup4
+feedgen
+python-dateutil
+flask
+lxml
+selenium
+python-dotenv

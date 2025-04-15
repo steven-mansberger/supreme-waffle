@@ -1,0 +1,312 @@
+---
+
+# RSS Feed Generator
+
+This project generates RSS feeds from blogs and websites that lack native RSS support, making them accessible for feed readers like FreshRSS. It runs on a Fedora server (`cheesecake`, `192.168.0.66`) and is designed to scrape articles, cache them, and serve static RSS feeds via a backend HTTP server, while also providing a dynamic feed generation API via Flask.
+
+## Features
+- **Static Feed Generation**: Scrapes predefined URLs, caches articles, and serves static RSS feeds via an HTTP server (`:8080`, proxied at `/rss/`).
+- **Dynamic Feed Generation**: Flask API (`:5001`, proxied at `/rss-api/`) for on-demand RSS feed generation from any URL.
+- **Centralized Feed Management**: Manage feeds via `feeds.json`, with Flask endpoints to add/remove feeds.
+- **FreshRSS Integration**: Generate OPML files for easy import into FreshRSS.
+- **Scheduled Updates**: Daily updates via a cron job (`update_feeds.sh`).
+- **Caching**: Articles are cached in `rss_feeds/articles.db` to minimize re-scraping.
+
+## Project Structure
+```
+/home/steven/dev/rss_generator/
+├── feeds.json              # Centralized feed configuration (URLs, titles, descriptions)
+├── logs/
+│   └── rss_generator.log   # Log file for scraping and server activity
+├── rss_feeds/
+│   ├── articles.db         # SQLite database for cached articles
+│   ├── www-forbes-com-rss.xml  # Generated RSS feed for Forbes
+│   ├── www-datacamp-com-rss.xml  # Generated RSS feed for DataCamp
+│   └── ...                 # Additional feeds as added
+├── scripts/
+│   ├── update_feeds.sh     # Cron script for daily feed updates
+│   └── watch_feeds.sh      # Optional: Script to auto-restart on feeds.json changes
+├── venv/                   # Virtual environment
+├── config.json             # Scraping selectors for different websites
+├── requirements.txt        # Python dependencies
+└── rss_generator.py        # Main script
+```
+
+## Prerequisites
+- **Fedora Server**: Tested on Fedora with IP `192.168.0.66`.
+- **Python 3.6+**: For running the script.
+- **nginx**: For proxying the backend (`/rss/`) and frontend (`/rss-api/`).
+- **firewalld**: Ports `80`, `5001`, and `8080` must be open.
+- **FreshRSS**: For consuming the generated feeds (optional).
+
+## Installation
+1. **Clone the Repository**:
+   ```bash
+   git clone <repository-url>
+   cd rss_generator
+   ```
+
+2. **Set Up Virtual Environment**:
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
+3. **Configure nginx**:
+   - Ensure `/etc/nginx/sites-available/RSSGenerator.conf` is set up:
+     ```nginx
+     server {
+         listen 80 default_server;
+         listen [::]:80 default_server;
+         server_name 192.168.0.66;
+
+         error_log /var/log/nginx/rssgenerator_error.log debug;
+         access_log /var/log/nginx/rssgenerator_access.log;
+
+         location /rss/ {
+             proxy_pass http://192.168.0.66:8080/;
+             proxy_http_version 1.1;
+             proxy_set_header Host $host;
+             proxy_set_header X-Real-IP $remote_addr;
+             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+             proxy_set_header X-Forwarded-Proto $scheme;
+             proxy_read_timeout 300s;
+             proxy_connect_timeout 300s;
+             proxy_send_timeout 300s;
+
+             if ($request_method = 'OPTIONS') {
+                 add_header 'Access-Control-Allow-Origin' '*';
+                 add_header 'Access-Control-Allow-Methods' 'GET, OPTIONS';
+                 add_header 'Access-Control-Allow-Headers' 'Content-Type';
+                 add_header 'Access-Control-Max-Age' 1728000;
+                 add_header 'Content-Type' 'text/plain; charset=utf-8';
+                 add_header 'Content-Length' 0;
+                 return 204;
+             }
+             add_header 'Access-Control-Allow-Origin' '*';
+             add_header 'Access-Control-Allow-Methods' 'GET, OPTIONS';
+             add_header 'Access-Control-Allow-Headers' 'Content-Type';
+         }
+
+         location /rss-api/ {
+             proxy_pass http://192.168.0.66:5001/;
+             proxy_http_version 1.1;
+             proxy_set_header Host $host;
+             proxy_set_header X-Real-IP $remote_addr;
+             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+             proxy_set_header X-Forwarded-Proto $scheme;
+             proxy_read_timeout 300s;
+             proxy_connect_timeout 300s;
+             proxy_send_timeout 300s;
+
+             if ($request_method = 'OPTIONS') {
+                 add_header 'Access-Control-Allow-Origin' '*';
+                 add_header 'Access-Control-Allow-Methods' 'GET, OPTIONS';
+                 add_header 'Access-Control-Allow-Headers' 'Content-Type';
+                 add_header 'Access-Control-Max-Age' 1728000;
+                 add_header 'Content-Type' 'text/plain; charset=utf-8';
+                 add_header 'Content-Length' 0;
+                 return 204;
+             }
+             add_header 'Access-Control-Allow-Origin' '*';
+             add_header 'Access-Control-Allow-Methods' 'GET, OPTIONS';
+             add_header 'Access-Control-Allow-Headers' 'Content-Type';
+         }
+
+         location / {
+             return 301 http://192.168.0.66:3000$request_uri;
+         }
+     }
+     ```
+   - Enable the config:
+     ```bash
+     sudo ln -s /etc/nginx/sites-available/RSSGenerator.conf /etc/nginx/sites-enabled/
+     sudo nginx -t
+     sudo systemctl restart nginx
+     ```
+
+4. **Open Firewall Ports**:
+   ```bash
+   sudo firewall-cmd --permanent --add-port=80/tcp
+   sudo firewall-cmd --permanent --add-port=5001/tcp
+   sudo firewall-cmd --permanent --add-port=8080/tcp
+   sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.0.0/24" port port="5001" protocol="tcp" accept'
+   sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="192.168.0.0/24" port port="8080" protocol="tcp" accept'
+   sudo firewall-cmd --reload
+   ```
+
+5. **Set Up `systemd` Service**:
+   - Create `/etc/systemd/system/rss-generator.service`:
+     ```ini
+     [Unit]
+     Description=RSS Feed Generator Service
+     After=network.target
+
+     [Service]
+     User=steven
+     Group=steven
+     WorkingDirectory=/home/steven/dev/rss_generator
+     Environment="PATH=/home/steven/dev/rss_generator/venv/bin"
+     ExecStart=/home/steven/dev/rss_generator/venv/bin/python /home/steven/dev/rss_generator/rss_generator.py --delay 2.0 --bind-address 192.168.0.66 --cache-first
+     Restart=always
+
+     [Install]
+     WantedBy=multi-user.target
+     ```
+   - Enable and start:
+     ```bash
+     sudo systemctl daemon-reload
+     sudo systemctl enable rss-generator.service
+     sudo systemctl start rss-generator.service
+     ```
+
+6. **Set Up Cron for Updates**:
+   - Ensure `scripts/update_feeds.sh` exists:
+     ```bash
+     #!/bin/bash
+     cd /home/steven/dev/rss_generator
+     source venv/bin/activate
+     python rss_generator.py --update-only --delay 2.0 --bind-address 192.168.0.66 --no-flask
+     ```
+   - Make it executable:
+     ```bash
+     chmod +x scripts/update_feeds.sh
+     ```
+   - Add to crontab (runs daily at 2:00 AM):
+     ```bash
+     crontab -e
+     # Add:
+     0 2 * * * /home/steven/dev/rss_generator/scripts/update_feeds.sh
+     ```
+
+## Usage
+### Accessing Static Feeds
+- Feeds are served via nginx at `http://192.168.0.66/rss/<feed-name>.xml`.
+- Examples:
+  - Forbes: `http://192.168.0.66/rss/www-forbes-com-rss.xml`
+  - DataCamp: `http://192.168.0.66/rss/www-datacamp-com-rss.xml`
+
+### Dynamic Feed Generation
+- Use the Flask API to generate feeds on-demand:
+  ```bash
+  curl http://192.168.0.66/rss-api/generate-feed?url=https://example.com/blog
+  ```
+- Direct Flask endpoint (bypassing nginx):
+  ```bash
+  curl http://192.168.0.66:5001/generate-feed?url=https://example.com/blog
+  ```
+
+### Managing Feeds
+Feeds are managed via `feeds.json`. Add or remove feeds using the Flask API.
+
+#### Add a New Feed
+1. **Test the URL**:
+   ```bash
+   curl http://192.168.0.66:5001/generate-feed?url=https://new-blog.com
+   ```
+2. **Add to `feeds.json`**:
+   ```bash
+   curl -X POST http://192.168.0.66:5001/add-feed \
+     -H "Content-Type: application/json" \
+     -d '{"url": "https://new-blog.com", "title": "New Blog Feed", "description": "Latest posts from New Blog"}'
+   ```
+3. **Restart Service**:
+   ```bash
+   sudo systemctl restart rss-generator.service
+   ```
+
+#### Remove a Feed
+```bash
+curl -X POST http://192.168.0.66:5001/remove-feed \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://new-blog.com"}'
+sudo systemctl restart rss-generator.service
+```
+
+#### Generate OPML for FreshRSS
+```bash
+curl http://192.168.0.66:5001/generate-opml > feeds.opml
+```
+- Import `feeds.opml` into FreshRSS under **Subscription Management** > **Import/Export** > **Import**.
+
+## Integration with FreshRSS
+1. **Generate OPML**:
+   ```bash
+   curl http://192.168.0.66:5001/generate-opml > feeds.opml
+   ```
+2. **Import into FreshRSS**:
+   - Go to **Subscription Management** > **Import/Export** > **Import**.
+   - Upload `feeds.opml`.
+3. **Verify**:
+   - Check that feeds (e.g., “Forbes AI News”, “DataCamp Blog”) load articles in FreshRSS.
+
+## Configuration
+- **`feeds.json`**: Defines the feeds to scrape.
+  ```json
+  [
+      {
+          "url": "https://www.forbes.com/ai/",
+          "title": "Forbes AI News",
+          "description": "AI insights from Forbes"
+      },
+      {
+          "url": "https://www.datacamp.com/blog",
+          "title": "DataCamp Blog",
+          "description": "Tutorials and insights from DataCamp"
+      }
+  ]
+  ```
+- **`config.json`**: Custom scraping selectors for different websites.
+  - Example: Add selectors for new sites under their domain (e.g., `new-blog.com`).
+
+## Troubleshooting
+- **Check Logs**:
+  ```bash
+  tail -f logs/rss_generator.log
+  ```
+- **Nginx Logs**:
+  ```bash
+  tail -f /var/log/nginx/rssgenerator_error.log
+  tail -f /var/log/nginx/rssgenerator_access.log
+  ```
+- **Verify Service**:
+  ```bash
+  sudo systemctl status rss-generator.service
+  ```
+- **Test Ports**:
+  ```bash
+  curl http://192.168.0.66:8080/www-forbes-com-rss.xml
+  curl http://192.168.0.66:5001/generate-feed?url=https://www.forbes.com/ai/
+  ```
+
+## Future Enhancements
+- **Authentication**: Add basic auth to Flask endpoints (`/add-feed`, `/remove-feed`).
+- **Web UI**: Create a simple HTML interface for managing feeds.
+- **Auto-Restart**: Use `inotifywait` to restart the service when `feeds.json` changes.
+- **HTTPS**: Configure nginx for HTTPS with Let’s Encrypt.
+
+## License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+### Notes for Git
+- **Add to Git**:
+  ```bash
+  cd /home/steven/dev/rss_generator
+  git init
+  echo "venv/" > .gitignore
+  echo "logs/" >> .gitignore
+  echo "rss_feeds/" >> .gitignore
+  git add .
+  git commit -m "Initial commit with README and project setup"
+  ```
+- **Push to Remote** (if using a remote repository like GitHub):
+  ```bash
+  git remote add origin <repository-url>
+  git branch -M main
+  git push -u origin main
+  ```
+
+This README provides a clear guide for anyone (including future you!) to understand, set up, and manage the project. It’s also Git-friendly with a `.gitignore` suggestion to exclude virtual environments, logs, and generated feeds. Let me know if you’d like to add more sections or implement any of the future enhancements!

@@ -1,0 +1,15 @@
+[Unit]
+Description=RSS Feed Generator Service
+After=network.target
+
+[Service]
+User=<user>
+Group=<user>
+WorkingDirectory=<project-dir>
+Environment="PATH=<project-dir>/venv/bin"
+EnvironmentFile=<project-dir>/.env
+ExecStart=<project-dir>/venv/bin/python <project-dir>/rss_generator.py --delay 2.0 --cache-first
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
