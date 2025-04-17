@@ -5,4 +5,6 @@ python-dateutil
 flask
 lxml
 selenium
+selenium-stealth
 python-dotenv
+undetected-chromedriver
