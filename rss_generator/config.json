@@ -3,18 +3,11 @@
         "article_selector": "a[href*=\"/blog/\"], article, .post, .entry, .blog-post, .blog-card",
         "title_selector": "h1, .article-title, .post-title, .blog-card__title, h2, h3",
         "date_selectors": ["time[datetime]", "meta[property=\"article:published_time\"]", ".date, .blog-card__date", ".published-date"],
-        "desc_selectors": ["meta[name=\"description\"]", "meta[property=\"og:description\"]", ".summary, .excerpt, .blog-card__description, p"]
-    },
-    "www.datacamp.com": {
-        "article_selector": "article.blog-card, a[href*=\"/blog/\"]",
-        "title_selector": "h1, .blog-card__title",
-        "date_selectors": ["time[datetime]", ".blog-card__date"],
-        "desc_selectors": ["meta[name=\"description\"]", ".blog-card__description, p"]
-    },
-    "www.forbes.com": {
-        "article_selector": "article, .stream-item, a[href*=\"/sites/\"], .article-card, .fbs-card",
-        "title_selector": "h1, .article-title, meta[property=\"og:title\"], .fs-headline",
-        "date_selectors": ["time[datetime]", "meta[property=\"article:published_time\"]", ".date, .publish-date"],
-        "desc_selectors": ["meta[name=\"description\"]", "meta[property=\"og:description\"]", ".article-body p:first-child, .intro"]
+        "desc_selectors": ["meta[name=\"description\"]", "meta[property=\"og:description\"]", ".summary, .excerpt, .blog-card__description, p"],
+        "next_page_selector": "a.next, a[rel=\"next\"], .pagination a[href*=\"/page/\"], a.next.page-numbers, a.load-more",
+        "url_filters": {
+            "exclude_patterns": ["/category/", "/sites/"]
+        },
+        "pagination_pattern": "page/{page_num}"
     }
 }
