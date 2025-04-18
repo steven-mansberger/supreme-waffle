@@ -56,26 +56,16 @@
 
     # Cron Jobs
     - name: Restore cron jobs
-      cron:
-        name: "{{ item.user }}_cron_{{ loop_index }}"
-        minute: "{{ job.split()[0] }}"
-        hour: "{{ job.split()[1] }}"
-        day: "{{ job.split()[2] }}"
-        month: "{{ job.split()[3] }}"
-        weekday: "{{ job.split()[4] }}"
-        job: "{{ job.split()[5:] | join(' ') }}"
-        user: "{{ item.user }}"
+      command: crontab {{ config_file | dirname }}/{{ item.file }}
+      args:
+        chdir: "{{ config_file | dirname }}"
       loop: "{{ system_config.cron_jobs }}"
-      loop_control:
-        loop_var: item
-        index_var: loop_index
-      with_subelements:
-        - "{{ item.jobs }}"
-        - jobs
       become: no
+      become_user: "{{ item.user }}"
+      when: item.file is defined
       tags: cron
 
-    # Firewall Rules (simplified, manual review recommended)
+    # Firewall Rules (manual review recommended)
     - name: Display firewall rules for manual restoration
       debug:
         msg: "Please manually restore firewall rules:\n{{ system_config.firewall_rules }}"
@@ -93,15 +83,14 @@
       become: no
       tags: dotfiles
 
-    # Application Configurations (selected .config subdirectories)
-    - name: Restore selected .config subdirectories
-      copy:
-        src: "{{ item.path }}"
-        dest: "{{ item.path }}"
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: preserve
-        directory_mode: '0755'
-      loop: "{{ system_config.app_configs }}"
-      become: no
-      tags: app_configs
+    # Command Outputs (manual review recommended)
+    - name: Display command outputs for manual review
+      debug:
+        msg: |
+          The following command outputs were captured for reference:
+          {% for output in system_config.command_outputs %}
+          - {{ output.command }}: {{ config_file | dirname }}/{{ output.file }}
+          {% endfor %}
+          Please review these files for manual restoration or system verification.
+      when: system_config.command_outputs | length > 0
+      tags: command_outputs
