@@ -1,0 +1,76 @@
+# Linux System Backup and Restore
+This repository contains scripts to back up and restore Linux system configurations, designed for Fedora, Ubuntu, Mint, and other distributions. It captures mount points, symlinks, packages, dotfiles, and selected application configurations (e.g., VSCodium, Lutris, OBS) in a portable, OS-agnostic manner using Ansible.
+## Features
+
+Backup: Generates human-readable (*.txt) and machine-readable (*.yml) configuration files with system metadata (hostname, OS, timestamp).
+System Segregation: Stores backups in backups/<hostname>/ directories with timestamped file names (e.g., system_config_fedora41-desktop_fedora_2025-04-18T12-34-56.yml).
+Selective Configs: Interactively selects ~/.config/ subdirectories to back up, excluding large caches (e.g., BraveSoftware).
+Symlink Filtering: Captures symlinks in non-hidden home directories (e.g., ~/Books), ignoring hidden ones (e.g., ~/.local/).
+Restoration: Uses Ansible to restore configurations, supporting drive replacements via drive labels.
+
+## Repository Structure
+├── backups/
+│   ├── <hostname>/
+│   │   ├── system_config_<hostname>_<os>_<timestamp>.txt
+│   │   ├── system_config_<hostname>_<os>_<timestamp>.yml
+│   │   ├── files/
+│   │   │   └── home/user/.config/<app>/
+├── gather_config.sh
+├── playbook.yml
+├── setup.sh
+└── README.md
+
+## Prerequisites
+
+Linux system (Fedora, Ubuntu, etc.) with bash, find, lsblk, git.
+Ansible for restoration (installed via setup.sh).
+Git for version control.
+
+## Usage
+### Backup
+
+Clone the repository:git clone <repository-url>
+cd <repository-directory>
+
+
+Run the backup script:chmod +x gather_config.sh
+./gather_config.sh
+
+
+When prompted, exclude unwanted ~/.config/ subdirectories (e.g., BraveSoftware).
+Copy selected .config/ subdirectories to the files/ directory:mkdir -p backups/<hostname>/files/home/user/.config/
+cp -r ~/.config/obs-studio backups/<hostname>/files/home/user/.config/obs-studio/
+
+
+Commit the backup to the Git repository:git add backups/<hostname>/
+git commit -m "Backup for <hostname> on <date>"
+git push
+
+
+
+### Restore
+
+Clone the repository on the new system:git clone <repository-url>
+cd <repository-directory>
+
+
+Navigate to the desired system’s backup directory (e.g., backups/fedora41-desktop/).
+Run the setup script to install Ansible and restore:chmod +x setup.sh
+./setup.sh -e "config_file=system_config_fedora41-desktop_fedora_2025-04-18T12-34-56.yml"
+
+Alternatively, copy the YAML file to system_config.yml:cp backups/<hostname>/system_config_<hostname>_<os>_<timestamp>.yml system_config.yml
+./setup.sh
+
+
+Verify restored symlinks (ls -l ~), packages, and application settings.
+
+### Notes
+
+Historical Backups: Timestamped file names (e.g., 2025-04-18T12-34-56) allow restoring older configurations by selecting the appropriate YAML file.
+Drive Labels: Ensure external drives have consistent labels (e.g., LABEL=2TBSSD01) for symlink and mount restoration.
+Testing: Test restoration in a VM to verify configurations, especially for applications with absolute paths (e.g., Lutris).
+
+Contributing
+Feel free to submit issues or pull requests for improvements, such as additional configuration types or refined filters.
+License
+MIT License

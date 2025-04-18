@@ -1,0 +1,107 @@
+---
+- name: Restore my personal Linux system
+  hosts: localhost
+  connection: local
+  become: yes
+
+  vars_files:
+    - "{{ config_file | default('system_config.yml') }}"
+
+  tasks:
+    # Display system metadata
+    - name: Display system metadata
+      debug:
+        msg: |
+          Restoring configuration for:
+          System: {{ system_config.metadata.hostname }}
+          OS: {{ system_config.metadata.os_name }} {{ system_config.metadata.os_version }}
+          Backup Date: {{ system_config.metadata.timestamp }}
+      tags: always
+
+    # Mount Points
+    - name: Restore mount points
+      mount:
+        path: "{{ item.mountpoint }}"
+        src: "{{ item.src }}"
+        fstype: "{{ item.fstype }}"
+        state: mounted
+      loop: "{{ system_config.mounts }}"
+      tags: mounts
+
+    # Symlinks
+    - name: Restore symlinks
+      file:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        state: link
+      loop: "{{ system_config.symlinks }}"
+      become: no
+      tags: symlinks
+
+    # Packages
+    - name: Install packages
+      package:
+        name: "{{ system_config.packages }}"
+        state: present
+      tags: packages
+
+    # Services
+    - name: Ensure services are running
+      service:
+        name: "{{ item }}"
+        state: started
+        enabled: yes
+      loop: "{{ system_config.services }}"
+      tags: services
+
+    # Cron Jobs
+    - name: Restore cron jobs
+      cron:
+        name: "{{ item.user }}_cron_{{ loop_index }}"
+        minute: "{{ job.split()[0] }}"
+        hour: "{{ job.split()[1] }}"
+        day: "{{ job.split()[2] }}"
+        month: "{{ job.split()[3] }}"
+        weekday: "{{ job.split()[4] }}"
+        job: "{{ job.split()[5:] | join(' ') }}"
+        user: "{{ item.user }}"
+      loop: "{{ system_config.cron_jobs }}"
+      loop_control:
+        loop_var: item
+        index_var: loop_index
+      with_subelements:
+        - "{{ item.jobs }}"
+        - jobs
+      become: no
+      tags: cron
+
+    # Firewall Rules (simplified, manual review recommended)
+    - name: Display firewall rules for manual restoration
+      debug:
+        msg: "Please manually restore firewall rules:\n{{ system_config.firewall_rules }}"
+      tags: firewall
+
+    # Dotfiles
+    - name: Restore dotfiles
+      copy:
+        src: "{{ item }}"
+        dest: "{{ item }}"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+      loop: "{{ system_config.dotfiles }}"
+      become: no
+      tags: dotfiles
+
+    # Application Configurations (selected .config subdirectories)
+    - name: Restore selected .config subdirectories
+      copy:
+        src: "{{ item.path }}"
+        dest: "{{ item.path }}"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: preserve
+        directory_mode: '0755'
+      loop: "{{ system_config.app_configs }}"
+      become: no
+      tags: app_configs
